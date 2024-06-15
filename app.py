@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 import plotly.express as px
+import numpy as np
 
 # Add CSS for hover effect and clickable cursor
 st.markdown(
@@ -83,8 +84,27 @@ def calculate_pir_stats(df, last_x_games):
     
     return last_games_stats
 
-def plot_pir_stats(df, last_x_games):
+def get_dominant_players(df):
+    # Sort players by StdDev_PIR then by Average_PIR
+    df_sorted = df.sort_values(['StdDev_PIR', 'Average_PIR'], ascending=[True, False])
+
+    # Initialize an empty list to store the indices of dominant players
+    dominant_indices = []
+
+    # Iterate over the sorted DataFrame to find dominant players
+    current_max_pir = -np.inf
+    for idx, row in df_sorted.iterrows():
+        if row['Average_PIR'] > current_max_pir:
+            dominant_indices.append(idx)
+            current_max_pir = row['Average_PIR']
+
+    return df_sorted.loc[dominant_indices]
+
+def plot_pir_stats(df, last_x_games, show_dominant):
     last_games_stats = calculate_pir_stats(df, last_x_games)
+
+    if show_dominant:
+        last_games_stats = get_dominant_players(last_games_stats)
 
     # Create a Plotly figure with this data
     fig = px.scatter(last_games_stats, x='StdDev_PIR', y='Average_PIR',
@@ -122,6 +142,9 @@ else:
     last_x_games = int(selected_option.split()[1])
     title_option = f"Last {last_x_games} Games"
 
+# Toggle for showing the dominant players
+show_dominant = st.checkbox("Show Only Dominant Players")
+
 # Create tabs for view options
 tab2, tab1 = st.tabs(["PIR over StdDev", "PIR Averages DataFrame"])
 
@@ -131,7 +154,7 @@ with tab1:
     st.write(last_games_stats)
 
 with tab2:
-    fig = plot_pir_stats(df, last_x_games if last_x_games is not None else df['GameCode'].nunique())
+    fig = plot_pir_stats(df, last_x_games if last_x_games is not None else df['GameCode'].nunique(), show_dominant)
     st.plotly_chart(fig)
 
 # Add button for recommending top players
