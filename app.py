@@ -15,3 +15,4 @@ fig = px.line(df, x='x', y='y', title='Sample Plot')
 
 # # Display the plot
 st.plotly_chart(fig)
+st.plotly_chart(fig)
