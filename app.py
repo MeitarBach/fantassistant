@@ -104,6 +104,13 @@ def plot_pir_stats(df, last_x_games):
 
     return fig
 
+def recommend_players(df, last_x_games):
+    last_games_stats = calculate_pir_stats(df, last_x_games if last_x_games is not None else df['GameCode'].nunique())
+    top_players = last_games_stats.sort_values(by='Average_PIR', ascending=False).head(10)
+    st.subheader("Top 10 Recommended Players")
+    st.write(top_players)
+    st.write("These players were chosen based on their high average PIR over the selected number of games, indicating consistent high performance.")
+
 # Selection input for the number of games
 game_options = ['All games'] + [f'Last {x} games' for x in range(1, 21)]
 selected_option = st.selectbox("Select the number of games to consider:", game_options)
@@ -126,6 +133,10 @@ with tab1:
 with tab2:
     fig = plot_pir_stats(df, last_x_games if last_x_games is not None else df['GameCode'].nunique())
     st.plotly_chart(fig)
+
+# Add button for recommending top players
+if st.button("Recommend Top 10 Players"):
+    recommend_players(df, last_x_games)
 
 # Optional: Provide an option to download the data
 st.subheader("Download Player Stats Data")
