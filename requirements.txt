@@ -1,3 +1,5 @@
 streamlit
 pandas
 plotly
+boto3
+botocore
