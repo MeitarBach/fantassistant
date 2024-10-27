@@ -20,24 +20,36 @@ def save_to_s3(filename, df):
     csv_buffer = df.to_csv(index=False)
     try:
         s3_client.put_object(Bucket=BUCKET_NAME, Key=filename, Body=csv_buffer)
-        st.success(f"File saved to S3: {filename}")
+        print(f"File saved to S3: {filename}")
     except (NoCredentialsError, ClientError) as e:
-        st.error(f"Failed to upload {filename} to S3: {e}")
+        print(f"Failed to upload {filename} to S3: {e}")
 
 def load_from_s3(filename):
     try:
         response = s3_client.get_object(Bucket=BUCKET_NAME, Key=filename)
         df = pd.read_csv(response['Body'])
-        st.success(f"Loaded file from S3: {filename}")
+        print(f"Loaded file from S3: {filename}")
         return df
     except ClientError as e:
-        st.warning(f"File not found in S3: {filename}")
+        print(f"File not found in S3: {filename}")
         return pd.DataFrame()
+
+def get_dominant_players(df):
+    dominant_players = []
+    for i, player in df.iterrows():
+        is_dominant = True
+        for j, other_player in df.iterrows():
+            if i != j and other_player['Average_PIR'] >= player['Average_PIR'] and other_player['StdDev_PIR'] <= player['StdDev_PIR']:
+                is_dominant = False
+                break
+        if is_dominant:
+            dominant_players.append(player)
+    return pd.DataFrame(dominant_players)
 
 st.title("Euroleague Player Performance")
 
 season_options = ['2023', '2024']
-selected_season = st.selectbox("Season:", season_options)
+selected_season = st.selectbox("Season:", season_options, index=1)
 
 data_file = f'player_stats_{selected_season}.csv'
 
@@ -49,7 +61,7 @@ else:
     last_stored_game_code = 0
     st.write("No existing data found. Fetching data from scratch.")
 
-new_game_codes = range(last_stored_game_code + 1, last_stored_game_code + 1000)  # Set a high limit
+new_game_codes = range(last_stored_game_code + 1, last_stored_game_code + 1000)
 
 all_player_data = []
 
@@ -77,7 +89,7 @@ if new_game_codes:
                         all_player_data.append(player_info)
                 progress_bar.progress(idx / len(new_game_codes))
         except Exception as e:
-            st.warning(f"Error fetching data for game code {game_code}: {e}")
+            print(f"Error fetching data for game code {game_code}: {e}")
             break
 
     if all_player_data:
@@ -89,7 +101,7 @@ else:
 
 def calculate_pir_stats(df, last_x_games):
     if 'PIR' not in df.columns:
-        st.warning("PIR data is not available. Some features may be limited.")
+        print("PIR data is not available. Some features may be limited.")
         return pd.DataFrame()
     df_sorted = df.sort_values('GameCode', ascending=False)
     if last_x_games == 1:
@@ -137,7 +149,7 @@ with tab1:
         fig.update_layout(autosize=False, width=900, height=700, plot_bgcolor='white')
         st.plotly_chart(fig)
     else:
-        st.warning("No data available to plot PIR stats.")
+        print("No data available to plot PIR stats.")
 
 with tab3:
     st.header("Detailed Boxscores")
@@ -163,7 +175,7 @@ with tab3:
 def recommend_players(df, last_x_games):
     last_games_stats = calculate_pir_stats(df, last_x_games if last_x_games is not None else df['GameCode'].nunique())
     if last_games_stats.empty:
-        st.warning("No data available to recommend players.")
+        print("No data available to recommend players.")
         return
     top_players = last_games_stats.sort_values(by='Average_PIR', ascending=False).head(10)
     st.subheader("Top 10 Recommended Players")
