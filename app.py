@@ -41,7 +41,7 @@ def fetch_and_save_cr_data():
     
     cr_df = pd.DataFrame(cr_data)
     cr_df['PlayerName'] = cr_df['first_name'] + ' ' + cr_df['last_name']
-    cr_df = cr_df[['PlayerName', 'cr']].rename(columns={'cr': 'CR'})
+    cr_df = cr_df[['PlayerName', 'CR']]
     save_to_s3("player_cr_data.csv", cr_df)
     return cr_df
 
@@ -58,6 +58,10 @@ def load_and_merge_data(player_stats_file):
     player_stats_df['PlayerName'] = player_stats_df['PlayerName'].apply(format_name)
     merged_df = pd.merge(player_stats_df, cr_df, on="PlayerName", how="left")
     return merged_df
+
+def filter_by_cr_range(df, min_cr, max_cr):
+    """Filter the DataFrame to include players with CR within the specified range."""
+    return df[(df['CR'] >= min_cr) & (df['CR'] <= max_cr)]
 
 def calculate_pir_stats(df, last_x_games):
     if 'PIR' not in df.columns:
@@ -79,16 +83,9 @@ def calculate_pir_stats(df, last_x_games):
         last_games_stats.columns = ['PlayerName', 'Average_PIR', 'StdDev_PIR', 'CR']
     return last_games_stats
 
-def calculate_weighted_pir(df, lambda_decay=0.1):
-    df = df.sort_values(by='GameCode', ascending=False)
-    weights = np.exp(-lambda_decay * np.arange(len(df)))
-    weighted_pir_avg = (df['PIR'] * weights).sum() / weights.sum()
-    return weighted_pir_avg
-
 def recommend_players(df, last_x_games=10, lambda_decay=0.1, w1=4, w2=1.5, w3=1):
-    # Set a default number of games if last_x_games is None or invalid
     if last_x_games is None or last_x_games <= 0:
-        last_x_games = 10  # Default to the last 10 games
+        last_x_games = 10
 
     recommendations = []
     grouped = df.groupby('PlayerName')
@@ -97,19 +94,13 @@ def recommend_players(df, last_x_games=10, lambda_decay=0.1, w1=4, w2=1.5, w3=1)
         recent_games = group.tail(last_x_games)
         
         if recent_games.empty:
-            continue  # Skip players with no recent games
+            continue
         
-        # Calculate PIR average for recent games
         pir_avg = recent_games['PIR'].mean() if len(recent_games) > 0 else 0
-        
-        # Calculate StdErr for recent games PIR
         pir_std = recent_games['PIR'].std(ddof=1) if len(recent_games) > 1 else 0
         stderr = pir_std / np.sqrt(len(recent_games)) if len(recent_games) > 0 else float('inf')
         
-        # Get the player's CR (cost)
         cr = group['CR'].iloc[0] if 'CR' in group else float('inf')
-        
-        # Calculate the recommendation score
         score = (w1 * pir_avg) + (w2 / cr) - (w3 * stderr) if cr > 0 else 0
         
         recommendations.append({
@@ -120,13 +111,9 @@ def recommend_players(df, last_x_games=10, lambda_decay=0.1, w1=4, w2=1.5, w3=1)
             'Score': score
         })
     
-    # Convert to DataFrame and sort by Score
     recommendations_df = pd.DataFrame(recommendations).sort_values(by='Score', ascending=False)
-    
     st.subheader("Top 10 Recommended Players Based on Weighted Formula")
     st.write(recommendations_df[['PlayerName', 'PIR_Avg', 'StdErr', 'CR', 'Score']].head(10))
-
-
 
 st.title("Euroleague Player Performance")
 
@@ -142,42 +129,10 @@ else:
     last_stored_game_code = 0
     st.write("No existing data found. Fetching data from scratch.")
 
-new_game_codes = range(last_stored_game_code + 1, last_stored_game_code + 1000)
-all_player_data = []
-
-if new_game_codes:
-    progress_bar = st.progress(0)
-    for idx, game_code in enumerate(new_game_codes, start=1):
-        api_endpoint = f"https://live.euroleague.net/api/Boxscore?gamecode={game_code}&seasoncode=E{selected_season}"
-        response = requests.get(api_endpoint)
-        try:
-            data = response.json()
-            if 'Stats' in data:
-                for team_stat in data['Stats']:
-                    for player in team_stat['PlayersStats']:
-                        player_info = {
-                            'Season': selected_season,
-                            'GameCode': game_code,
-                            'Team': team_stat['Team'],
-                            'PlayerID': player.get('Player_ID', '').strip(),
-                            'PlayerName': player.get('Player', '').strip(),
-                            'PIR': player.get('Valuation', None)
-                        }
-                        for key, value in player.items():
-                            if key not in ['Player_ID', 'Player', 'Valuation']:
-                                player_info[key] = value
-                        all_player_data.append(player_info)
-                progress_bar.progress(idx / len(new_game_codes))
-        except Exception as e:
-            print(f"Error fetching data for game code {game_code}: {e}")
-            break
-
-    if all_player_data:
-        new_df = pd.DataFrame(all_player_data)
-        df = pd.concat([df, new_df], ignore_index=True)
-        save_to_s3(data_file, df)
-else:
-    st.write("Data is already up to date.")
+# CR Range Slider
+st.subheader("Filter Players by CR Range")
+min_cr, max_cr = st.slider("Select CR range:", min_value=float(df['CR'].min()), max_value=float(df['CR'].max()), value=(float(df['CR'].min()), float(df['CR'].max())))
+filtered_df = filter_by_cr_range(df, min_cr, max_cr)
 
 game_options = ['All games'] + [f'Last {x} games' for x in range(1, 21)]
 selected_option = st.selectbox("Select the number of games to consider:", game_options)
@@ -192,17 +147,16 @@ show_dominant = st.checkbox("Show Only Dominant Players")
 tab1, tab2, tab3 = st.tabs(["PIR over StdDev", "PIR Averages DataFrame", "Detailed Boxscores"])
 
 with tab2:
-    last_games_stats = calculate_pir_stats(df, last_x_games if last_x_games is not None else df['GameCode'].nunique())
+    last_games_stats = calculate_pir_stats(filtered_df, last_x_games if last_x_games is not None else df['GameCode'].nunique())
     st.subheader("Player Performance Statistics")
     st.write(last_games_stats)
 
 with tab1:
-    last_games_stats = calculate_pir_stats(df, last_x_games if last_x_games is not None else df['GameCode'].nunique())
+    last_games_stats = calculate_pir_stats(filtered_df, last_x_games if last_x_games is not None else df['GameCode'].nunique())
     if not last_games_stats.empty:
         if show_dominant:
             last_games_stats = get_dominant_players(last_games_stats)
         
-        # Plotting Average PIR vs. Standard Deviation of PIR with CR in hover data
         fig = px.scatter(last_games_stats, x='StdDev_PIR', y='Average_PIR',
                          color='Average_PIR',
                          hover_data={'PlayerName': True, 'Average_PIR': ':.2f', 'StdDev_PIR': ':.2f'},
@@ -225,26 +179,27 @@ with tab3:
     boxscore_selected_option = st.selectbox("Select the games to view:", boxscore_game_options, key='boxscore_games')
 
     if boxscore_selected_option == 'All games':
-        filtered_df = df.copy()
+        filtered_df_boxscore = filtered_df.copy()
     else:
-        last_x_games = int(boxscore_selected_option.split()[1])
-        latest_game_codes = sorted(df['GameCode'].unique(), reverse=True)[:last_x_games]
-        filtered_df = df[df['GameCode'].isin(latest_game_codes)]
+        last_x_games_boxscore = int(boxscore_selected_option.split()[1])
+        latest_game_codes = sorted(df['GameCode'].unique(), reverse=True)[:last_x_games_boxscore]
+        filtered_df_boxscore = filtered_df[filtered_df['GameCode'].isin(latest_game_codes)]
 
     st.subheader(f"Boxscore Stats ({boxscore_selected_option})")
-    st.write(filtered_df)
+    st.write(filtered_df_boxscore)
 
     if st.checkbox("Show Average Stats", key='average_stats'):
-        numeric_cols = filtered_df.select_dtypes(include=np.number).columns.tolist()
-        avg_stats = filtered_df.groupby(['PlayerName'])[numeric_cols].mean().reset_index()
+        numeric_cols = filtered_df_boxscore.select_dtypes(include=np.number).columns.tolist()
+        avg_stats = filtered_df_boxscore.groupby(['PlayerName'])[numeric_cols].mean().reset_index()
         st.subheader("Average Stats")
         st.write(avg_stats)
 
 # Recommend Top Players using the new scoring formula
 if st.button("Recommend Top 10 Players"):
-    recommend_players(df, last_x_games)
+    recommend_players(filtered_df, last_x_games)
 
 # CSV Download Option for Player Stats Data
 csv = df.to_csv(index=False)
 st.subheader("Download Player Stats Data")
 st.download_button(label="Download CSV", data=csv, file_name='player_stats.csv', mime='text/csv')
+
