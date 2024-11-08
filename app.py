@@ -36,20 +36,33 @@ def load_from_s3(filename):
 
 def fetch_and_save_cr_data():
     api_url = "https://www.dunkest.com/api/stats/table?season_id=17&mode=dunkest&stats_type=tot&weeks%5B%5D=2&rounds%5B%5D=1&rounds%5B%5D=2&rounds%5B%5D=3&teams%5B%5D=31&teams%5B%5D=32&teams%5B%5D=33&teams%5B%5D=34&teams%5B%5D=35&teams%5B%5D=36&teams%5B%5D=37&teams%5B%5D=38&teams%5B%5D=39&teams%5B%5D=40&teams%5B%5D=41&teams%5B%5D=42&teams%5B%5D=43&teams%5B%5D=44&teams%5B%5D=45&teams%5B%5D=47&teams%5B%5D=48&teams%5B%5D=60&positions%5B%5D=1&positions%5B%5D=2&positions%5B%5D=3&player_search=&min_cr=4&max_cr=35&sort_by=pdk&sort_order=desc&iframe=yes"
+    
+    # Fetch data from API
     response = requests.get(api_url)
     cr_data = response.json()
     
+    # Convert response to DataFrame
     cr_df = pd.DataFrame(cr_data)
     cr_df['PlayerName'] = cr_df['first_name'] + ' ' + cr_df['last_name']
-    cr_df = cr_df[['PlayerName', 'CR']]
+    
+    # Select only relevant columns: PlayerName, CR, and position
+    cr_df = cr_df[['PlayerName', 'cr', 'position']].rename(columns={'cr': 'CR'})
+    
+    # Convert CR to numeric and position to string
+    cr_df['CR'] = pd.to_numeric(cr_df['CR'], errors='coerce')
+    cr_df['position'] = cr_df['position'].astype(str)
+    
+    # Save CR and position data to S3 as a separate file
     save_to_s3("player_cr_data.csv", cr_df)
+    print("Player CR and Position data saved to player_cr_data.csv")
     return cr_df
 
 def load_and_merge_data(player_stats_file):
     player_stats_df = load_from_s3(player_stats_file)
     cr_df = load_from_s3("player_cr_data.csv")
-    if cr_df.empty:
-        cr_df = fetch_and_save_cr_data()
+    
+    # Fetch CR data if needed
+    cr_df = fetch_and_save_cr_data()
     
     def format_name(name):
         parts = name.split(", ")
@@ -57,10 +70,17 @@ def load_and_merge_data(player_stats_file):
     
     player_stats_df['PlayerName'] = player_stats_df['PlayerName'].apply(format_name)
     merged_df = pd.merge(player_stats_df, cr_df, on="PlayerName", how="left")
+    
+    # Ensure CR and position columns are properly formatted
+    merged_df['CR'] = pd.to_numeric(merged_df['CR'], errors='coerce')
+    merged_df['position'] = merged_df['position'].astype(str)
+    
     return merged_df
 
-def filter_by_cr_range(df, min_cr, max_cr):
-    """Filter the DataFrame to include players with CR within the specified range."""
+def filter_by_cr_and_position(df, min_cr, max_cr, position):
+    """Filter the DataFrame to include players with CR within the specified range and by position."""
+    if position != "All":
+        df = df[df['position'] == position]
     return df[(df['CR'] >= min_cr) & (df['CR'] <= max_cr)]
 
 def calculate_pir_stats(df, last_x_games):
@@ -71,16 +91,18 @@ def calculate_pir_stats(df, last_x_games):
     if last_x_games == 1:
         last_games_stats = df_sorted.groupby('PlayerName').head(last_x_games).groupby('PlayerName').agg({
             'PIR': 'mean',
-            'CR': 'first'
+            'CR': 'first',
+            'position': 'first'
         }).reset_index()
         last_games_stats['StdDev_PIR'] = 0
-        last_games_stats.columns = ['PlayerName', 'Average_PIR', 'CR', 'StdDev_PIR']
+        last_games_stats.columns = ['PlayerName', 'Average_PIR', 'CR', 'position', 'StdDev_PIR']
     else:
         last_games_stats = df_sorted.groupby('PlayerName').head(last_x_games).groupby('PlayerName').agg({
             'PIR': ['mean', 'std'],
-            'CR': 'first'
+            'CR': 'first',
+            'position': 'first'
         }).reset_index()
-        last_games_stats.columns = ['PlayerName', 'Average_PIR', 'StdDev_PIR', 'CR']
+        last_games_stats.columns = ['PlayerName', 'Average_PIR', 'StdDev_PIR', 'CR', 'position']
     return last_games_stats
 
 def recommend_players(df, last_x_games=10, lambda_decay=0.1, w1=4, w2=1.5, w3=1):
@@ -101,6 +123,7 @@ def recommend_players(df, last_x_games=10, lambda_decay=0.1, w1=4, w2=1.5, w3=1)
         stderr = pir_std / np.sqrt(len(recent_games)) if len(recent_games) > 0 else float('inf')
         
         cr = group['CR'].iloc[0] if 'CR' in group else float('inf')
+        position = group['position'].iloc[0] if 'position' in group else "Unknown"
         score = (w1 * pir_avg) + (w2 / cr) - (w3 * stderr) if cr > 0 else 0
         
         recommendations.append({
@@ -108,12 +131,13 @@ def recommend_players(df, last_x_games=10, lambda_decay=0.1, w1=4, w2=1.5, w3=1)
             'PIR_Avg': pir_avg,
             'StdErr': stderr,
             'CR': cr,
+            'position': position,
             'Score': score
         })
     
     recommendations_df = pd.DataFrame(recommendations).sort_values(by='Score', ascending=False)
     st.subheader("Top 10 Recommended Players Based on Weighted Formula")
-    st.write(recommendations_df[['PlayerName', 'PIR_Avg', 'StdErr', 'CR', 'Score']].head(10))
+    st.write(recommendations_df[['PlayerName', 'PIR_Avg', 'StdErr', 'CR', 'position', 'Score']].head(10))
 
 st.title("Euroleague Player Performance")
 
@@ -129,10 +153,12 @@ else:
     last_stored_game_code = 0
     st.write("No existing data found. Fetching data from scratch.")
 
-# CR Range Slider
-st.subheader("Filter Players by CR Range")
+# CR Range Slider and Position Filter
+st.subheader("Filter Players by CR Range and Position")
 min_cr, max_cr = st.slider("Select CR range:", min_value=float(df['CR'].min()), max_value=float(df['CR'].max()), value=(float(df['CR'].min()), float(df['CR'].max())))
-filtered_df = filter_by_cr_range(df, min_cr, max_cr)
+position_options = ["All"] + sorted(df['position'].unique())
+selected_position = st.selectbox("Select Position:", position_options)
+filtered_df = filter_by_cr_and_position(df, min_cr, max_cr, selected_position)
 
 game_options = ['All games'] + [f'Last {x} games' for x in range(1, 21)]
 selected_option = st.selectbox("Select the number of games to consider:", game_options)
@@ -157,16 +183,17 @@ with tab1:
         if show_dominant:
             last_games_stats = get_dominant_players(last_games_stats)
         
+        # Plotting Average PIR vs. Standard Deviation of PIR with CR and Position in hover data
         fig = px.scatter(last_games_stats, x='StdDev_PIR', y='Average_PIR',
                          color='Average_PIR',
-                         hover_data={'PlayerName': True, 'Average_PIR': ':.2f', 'StdDev_PIR': ':.2f'},
-                         custom_data=['PlayerName', 'Average_PIR', 'StdDev_PIR', 'CR'],
+                         hover_data={'PlayerName': True, 'Average_PIR': ':.2f', 'StdDev_PIR': ':.2f', 'position': True, 'CR': True},
+                         custom_data=['PlayerName', 'Average_PIR', 'StdDev_PIR', 'position', 'CR'],
                          title=f'Average PIR vs. Standard Deviation of PIR (Last {last_x_games} Games)' if last_x_games else 'Average PIR vs. Standard Deviation of PIR (All Games)',
                          labels={'StdDev_PIR': 'Standard Deviation of PIR', 'Average_PIR': 'Average PIR'},
                          color_continuous_scale=px.colors.sequential.Plasma)
         
-        # Update hovertemplate to display CR
-        fig.update_traces(hovertemplate="<b>%{customdata[0]}</b><br>Average PIR: %{customdata[1]:.2f}<br>StdDev PIR: %{customdata[2]:.2f}<br>CR: %{customdata[3]:.2f}")
+        # Update hovertemplate to display CR and Position
+        fig.update_traces(hovertemplate="<b>%{customdata[0]}</b><br>Average PIR: %{customdata[1]:.2f}<br>StdDev PIR: %{customdata[2]:.2f}<br>Position: %{customdata[3]}<br>CR: %{customdata[4]:.2f}")
         
         fig.update_layout(autosize=False, width=900, height=700, plot_bgcolor='white')
         st.plotly_chart(fig)
@@ -190,7 +217,7 @@ with tab3:
 
     if st.checkbox("Show Average Stats", key='average_stats'):
         numeric_cols = filtered_df_boxscore.select_dtypes(include=np.number).columns.tolist()
-        avg_stats = filtered_df_boxscore.groupby(['PlayerName'])[numeric_cols].mean().reset_index()
+        avg_stats = filtered_df_boxscore.groupby(['PlayerName', 'position'])[numeric_cols].mean().reset_index()
         st.subheader("Average Stats")
         st.write(avg_stats)
 
@@ -202,4 +229,3 @@ if st.button("Recommend Top 10 Players"):
 csv = df.to_csv(index=False)
 st.subheader("Download Player Stats Data")
 st.download_button(label="Download CSV", data=csv, file_name='player_stats.csv', mime='text/csv')
-
