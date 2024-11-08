@@ -34,6 +34,64 @@ def load_from_s3(filename):
         print(f"File not found in S3: {filename}")
         return pd.DataFrame()
 
+# Fetch CR data for each player from the Dunkest API and save it to a separate file
+def fetch_and_save_cr_data():
+    api_url = "https://www.dunkest.com/api/stats/table?season_id=17&mode=dunkest&stats_type=tot&weeks%5B%5D=2&rounds%5B%5D=1&rounds%5B%5D=2&rounds%5B%5D=3&teams%5B%5D=31&teams%5B%5D=32&teams%5B%5D=33&teams%5B%5D=34&teams%5B%5D=35&teams%5B%5D=36&teams%5B%5D=37&teams%5B%5D=38&teams%5B%5D=39&teams%5B%5D=40&teams%5B%5D=41&teams%5B%5D=42&teams%5B%5D=43&teams%5B%5D=44&teams%5B%5D=45&teams%5B%5D=47&teams%5B%5D=48&teams%5B%5D=60&positions%5B%5D=1&positions%5B%5D=2&positions%5B%5D=3&player_search=&min_cr=4&max_cr=35&sort_by=pdk&sort_order=desc&iframe=yes"
+    response = requests.get(api_url)
+    cr_data = response.json()
+    
+    # Convert response to DataFrame
+    cr_df = pd.DataFrame(cr_data)
+    cr_df['PlayerName'] = cr_df['first_name'] + ' ' + cr_df['last_name']
+    cr_df = cr_df[['PlayerName', 'cr']].rename(columns={'cr': 'CR'})
+    
+    # Save CR data to S3 as a separate file
+    save_to_s3("player_cr_data.csv", cr_df)
+    return cr_df
+
+def load_and_merge_data(player_stats_file):
+    # Load player stats data
+    player_stats_df = load_from_s3(player_stats_file)
+    
+    # Load CR data
+    cr_df = load_from_s3("player_cr_data.csv")
+    if cr_df.empty:
+        cr_df = fetch_and_save_cr_data()
+    
+    # Standardize player names in player_stats_df to "First Last" format
+    def format_name(name):
+        parts = name.split(", ")
+        return f"{parts[1].capitalize()} {parts[0].capitalize()}" if len(parts) == 2 else name
+    
+    player_stats_df['PlayerName'] = player_stats_df['PlayerName'].apply(format_name)
+    
+    # Merge the player stats with CR data on the formatted PlayerName column
+    merged_df = pd.merge(player_stats_df, cr_df, on="PlayerName", how="left")
+    return merged_df
+
+
+# Calculate PIR statistics
+def calculate_pir_stats(df, last_x_games):
+    if 'PIR' not in df.columns:
+        print("PIR data is not available. Some features may be limited.")
+        return pd.DataFrame()
+    df_sorted = df.sort_values('GameCode', ascending=False)
+    if last_x_games == 1:
+        last_games_stats = df_sorted.groupby('PlayerName').head(last_x_games).groupby('PlayerName').agg({
+            'PIR': 'mean',
+            'CR': 'first'  # Assuming CR is static for each player; adjust if needed
+        }).reset_index()
+        last_games_stats['StdDev_PIR'] = 0
+        last_games_stats.columns = ['PlayerName', 'Average_PIR', 'CR', 'StdDev_PIR']
+    else:
+        last_games_stats = df_sorted.groupby('PlayerName').head(last_x_games).groupby('PlayerName').agg({
+            'PIR': ['mean', 'std'],
+            'CR': 'first'
+        }).reset_index()
+        last_games_stats.columns = ['PlayerName', 'Average_PIR', 'StdDev_PIR', 'CR']
+    return last_games_stats
+
+# Get dominant players
 def get_dominant_players(df):
     dominant_players = []
     for i, player in df.iterrows():
@@ -46,14 +104,14 @@ def get_dominant_players(df):
             dominant_players.append(player)
     return pd.DataFrame(dominant_players)
 
+# Main App
 st.title("Euroleague Player Performance")
 
 season_options = ['2023', '2024']
 selected_season = st.selectbox("Season:", season_options, index=1)
 
 data_file = f'player_stats_{selected_season}.csv'
-
-df = load_from_s3(data_file)
+df = load_and_merge_data(data_file)
 if not df.empty:
     last_stored_game_code = df['GameCode'].max()
     st.write(f"Loaded data up to game code {last_stored_game_code}")
@@ -62,7 +120,6 @@ else:
     st.write("No existing data found. Fetching data from scratch.")
 
 new_game_codes = range(last_stored_game_code + 1, last_stored_game_code + 1000)
-
 all_player_data = []
 
 if new_game_codes:
@@ -99,24 +156,6 @@ if new_game_codes:
 else:
     st.write("Data is already up to date.")
 
-def calculate_pir_stats(df, last_x_games):
-    if 'PIR' not in df.columns:
-        print("PIR data is not available. Some features may be limited.")
-        return pd.DataFrame()
-    df_sorted = df.sort_values('GameCode', ascending=False)
-    if last_x_games == 1:
-        last_games_stats = df_sorted.groupby('PlayerName').head(last_x_games).groupby('PlayerName').agg({
-            'PIR': 'mean'
-        }).reset_index()
-        last_games_stats['StdDev_PIR'] = 0
-        last_games_stats.columns = ['PlayerName', 'Average_PIR', 'StdDev_PIR']
-    else:
-        last_games_stats = df_sorted.groupby('PlayerName').head(last_x_games).groupby('PlayerName').agg({
-            'PIR': ['mean', 'std']
-        }).reset_index()
-        last_games_stats.columns = ['PlayerName', 'Average_PIR', 'StdDev_PIR']
-    return last_games_stats
-
 game_options = ['All games'] + [f'Last {x} games' for x in range(1, 21)]
 selected_option = st.selectbox("Select the number of games to consider:", game_options)
 
@@ -139,17 +178,24 @@ with tab1:
     if not last_games_stats.empty:
         if show_dominant:
             last_games_stats = get_dominant_players(last_games_stats)
+        
+        # Pass the necessary columns explicitly in customdata
         fig = px.scatter(last_games_stats, x='StdDev_PIR', y='Average_PIR',
+                         color='Average_PIR',
                          hover_data={'PlayerName': True, 'Average_PIR': ':.2f', 'StdDev_PIR': ':.2f'},
+                         custom_data=['PlayerName', 'Average_PIR', 'StdDev_PIR', 'CR'],
                          title=f'Average PIR vs. Standard Deviation of PIR (Last {last_x_games} Games)' if last_x_games else 'Average PIR vs. Standard Deviation of PIR (All Games)',
                          labels={'StdDev_PIR': 'Standard Deviation of PIR', 'Average_PIR': 'Average PIR'},
-                         color='Average_PIR',
                          color_continuous_scale=px.colors.sequential.Plasma)
-        fig.update_traces(hovertemplate="<b>%{customdata[0]}</b><br>Average PIR: %{y:.2f}<br>StdDev PIR: %{x:.2f}")
+        
+        # Update hovertemplate to correctly display CR from customdata
+        fig.update_traces(hovertemplate="<b>%{customdata[0]}</b><br>Average PIR: %{customdata[1]:.2f}<br>StdDev PIR: %{customdata[2]:.2f}<br>CR: %{customdata[3]:.2f}")
+        
         fig.update_layout(autosize=False, width=900, height=700, plot_bgcolor='white')
         st.plotly_chart(fig)
     else:
         print("No data available to plot PIR stats.")
+
 
 with tab3:
     st.header("Detailed Boxscores")
@@ -172,6 +218,7 @@ with tab3:
         st.subheader("Average Stats")
         st.write(avg_stats)
 
+# Function to recommend top players
 def recommend_players(df, last_x_games):
     last_games_stats = calculate_pir_stats(df, last_x_games if last_x_games is not None else df['GameCode'].nunique())
     if last_games_stats.empty:
@@ -179,11 +226,13 @@ def recommend_players(df, last_x_games):
         return
     top_players = last_games_stats.sort_values(by='Average_PIR', ascending=False).head(10)
     st.subheader("Top 10 Recommended Players")
-    st.write(top_players[['PlayerName', 'Average_PIR', 'StdDev_PIR']])
+    st.write(top_players[['PlayerName', 'Average_PIR', 'StdDev_PIR', 'CR']])
 
+# Button to recommend top 10 players based on Average PIR
 if st.button("Recommend Top 10 Players"):
     recommend_players(df, last_x_games)
 
+# Download option for the player stats data
 csv = df.to_csv(index=False)
 st.subheader("Download Player Stats Data")
 st.download_button(label="Download CSV", data=csv, file_name='player_stats.csv', mime='text/csv')
