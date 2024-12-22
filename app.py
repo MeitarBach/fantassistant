@@ -53,9 +53,9 @@ def fetch_and_save_cr_data():
 
 def load_and_merge_data(player_stats_file):
     player_stats_df = load_from_s3(player_stats_file)
-    cr_df = load_from_s3("player_cr_data.csv")
-    if cr_df.empty:
-        cr_df = fetch_and_save_cr_data()
+    # cr_df = load_from_s3("player_cr_data.csv")
+    # if cr_df.empty:
+    cr_df = fetch_and_save_cr_data()
     
     def format_name(name):
         parts = name.split(", ")
@@ -203,8 +203,25 @@ def recommend_players(df, last_x_games=10, lambda_decay=0.1, w1=1, w2=4, w3=1):
     st.subheader("Top 10 Recommended Players Based on Weighted Formula")
     st.write(recommendations_df[['PlayerName', 'PIR_Avg', 'StdErr', 'CR', 'position', 'Score']].head(10))
 
+def get_dominant_players(df):
+    if df.empty:
+        return df
+
+    dominant_players = []
+    for i, player in df.iterrows():
+        dominated = False
+        for j, other_player in df.iterrows():
+            if (other_player['Average_PIR'] > player['Average_PIR'] and
+                    other_player['StdDev_PIR'] < player['StdDev_PIR']):
+                dominated = True
+                break
+        if not dominated:
+            dominant_players.append(player)
+
+    return pd.DataFrame(dominant_players)
+
 # Main App Code
-st.title("Euroleague Player Performance")
+st.title("Euroleague Fantassistant")
 
 # Select Season
 season_options = ['2023', '2024']
@@ -241,13 +258,7 @@ else:
 show_dominant = st.checkbox("Show Only Dominant Players")
 
 # Tabs for Different Views
-tab1, tab2, tab3 = st.tabs(["PIR over StdDev", "PIR Averages DataFrame", "Detailed Boxscores"])
-
-# Tab 2: PIR Averages DataFrame
-with tab2:
-    last_games_stats = calculate_pir_stats(filtered_df, last_x_games if last_x_games is not None else df['GameCode'].nunique())
-    st.subheader("Player Performance Statistics")
-    st.write(last_games_stats)
+tab1, tab2, tab3, tab4 = st.tabs(["PIR over StdDev", "PIR over CR", "PIR Averages DataFrame", "Detailed Boxscores"])
 
 # Tab 1: PIR vs. StdDev
 with tab1:
@@ -256,7 +267,7 @@ with tab1:
         if show_dominant:
             last_games_stats = get_dominant_players(last_games_stats)
         
-        fig = px.scatter(last_games_stats, x='StdDev_PIR', y='Average_PIR',
+        fig = px.scatter(last_games_stats, x= 'StdDev_PIR', y='Average_PIR',
                          color='Average_PIR',
                          hover_data={'PlayerName': True, 'Average_PIR': ':.2f', 'StdDev_PIR': ':.2f', 'position': True, 'CR': True},
                          custom_data=['PlayerName', 'Average_PIR', 'StdDev_PIR', 'position', 'CR'],
@@ -271,8 +282,33 @@ with tab1:
     else:
         print("No data available to plot PIR stats.")
 
-# Tab 3: Detailed Boxscores
+# Tab 2: PIR vs. CR
+with tab2:
+    last_games_stats = calculate_pir_stats(filtered_df, last_x_games if last_x_games is not None else df['GameCode'].nunique())
+    if not last_games_stats.empty:
+        fig = px.scatter(last_games_stats, x='CR', y='Average_PIR',
+                         color='Average_PIR',
+                         hover_data={'PlayerName': True, 'Average_PIR': ':.2f', 'CR': ':.2f', 'position': True},
+                         custom_data=['PlayerName', 'Average_PIR', 'CR', 'position'],
+                         title=f'Average PIR vs. CR (Last {last_x_games} Games)' if last_x_games else 'Average PIR vs. CR (All Games)',
+                         labels={'CR': 'CR (Cost)', 'Average_PIR': 'Average PIR'},
+                         color_continuous_scale=px.colors.sequential.Viridis)
+        
+        fig.update_traces(hovertemplate="<b>%{customdata[0]}</b><br>Average PIR: %{customdata[1]:.2f}<br>CR: %{customdata[2]:.2f}<br>Position: %{customdata[3]}")
+        
+        fig.update_layout(autosize=False, width=900, height=700, plot_bgcolor='white')
+        st.plotly_chart(fig)
+    else:
+        st.write("No data available to plot PIR vs. CR.")
+
+# Tab 3: PIR Averages DataFrame
 with tab3:
+    last_games_stats = calculate_pir_stats(filtered_df, last_x_games if last_x_games is not None else df['GameCode'].nunique())
+    st.subheader("Player Performance Statistics")
+    st.write(last_games_stats)
+
+# Tab 4: Detailed Boxscores
+with tab4:
     st.header("Detailed Boxscores")
     boxscore_game_options = ['All games'] + [f'Last {x} games' for x in range(1, 21)]
     boxscore_selected_option = st.selectbox("Select the games to view:", boxscore_game_options, key='boxscore_games')
