@@ -82,41 +82,53 @@ def fetch_and_update_player_stats(data_file, season_code):
     # Define game codes to fetch, starting from the last stored one
     new_game_codes = range(last_stored_game_code + 1, last_stored_game_code + 1000)
     all_player_data = []
+    consecutive_failures = 0  # Counter for consecutive failures
+    max_failures = 5          # Stop fetching after 5 consecutive failures
 
     for game_code in new_game_codes:
         print(f"Fetching game; gameCode={game_code}")
         api_endpoint = f"https://live.euroleague.net/api/Boxscore?gamecode={game_code}&seasoncode={season_code}"
 
         try:
-            response = requests.get(api_endpoint, timeout=10)  # Set a timeout for the request
+            response = requests.get(api_endpoint, timeout=10)
+            response.raise_for_status()  # Raises error if status code is not 200
+
             data = response.json()
 
-            # If the response contains no game data, terminate the loop
+            # If 'Stats' not in response, increment failures and continue
             if 'Stats' not in data:
-                print(f"No stats found for gameCode={game_code}. Stopping fetch.")
-                break
+                print(f"No stats found for gameCode={game_code}.")
+                consecutive_failures += 1
+            else:
+                # Reset failure counter on success
+                consecutive_failures = 0  
 
-            # Process data into a flat structure
-            for team_stat in data['Stats']:
-                for player in team_stat['PlayersStats']:
-                    player_info = {
-                        'Season': season_code,
-                        'GameCode': game_code,
-                        'Team': team_stat['Team'],
-                        'PlayerID': player.get('Player_ID', '').strip(),
-                        'PlayerName': player.get('Player', '').strip(),
-                        'PIR': player.get('Valuation', None)
-                    }
-                    all_player_data.append(player_info)
+                # Process data into a flat structure
+                for team_stat in data['Stats']:
+                    for player in team_stat['PlayersStats']:
+                        player_info = {
+                            'Season': season_code,
+                            'GameCode': game_code,
+                            'Team': team_stat['Team'],
+                            'PlayerID': player.get('Player_ID', '').strip(),
+                            'PlayerName': player.get('Player', '').strip(),
+                            'PIR': player.get('Valuation', None)
+                        }
+                        all_player_data.append(player_info)
 
         except requests.exceptions.ReadTimeout:
-            print(f"Timeout occurred for gameCode={game_code}. Saving fetched data and terminating.")
-            break
-        except ValueError as e:
-            print(f"Error processing gameCode={game_code}: {e}. Assuming no more games. Saving fetched data and terminating.")
-            break
+            print(f"Timeout for gameCode={game_code}.")
+            consecutive_failures += 1
+        except (ValueError, requests.exceptions.RequestException) as e:
+            print(f"Error for gameCode={game_code}: {e}")
+            consecutive_failures += 1
         except Exception as e:
-            print(f"Unexpected error for gameCode={game_code}: {e}. Saving fetched data and terminating.")
+            print(f"Unexpected error for gameCode={game_code}: {e}")
+            consecutive_failures += 1
+
+        # Stop fetching if consecutive failures reach the limit
+        if consecutive_failures >= max_failures:
+            print(f"Reached {max_failures} consecutive failures. Stopping fetch.")
             break
 
     # Create a new DataFrame for fetched data
