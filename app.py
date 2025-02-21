@@ -194,7 +194,87 @@ st.markdown("### Player Recommendations")
 if st.button("Get Top 10 Recommendations"):
     # You can also call the old version:
     # recommend_players(filtered_df, last_x_games)
-    recommend_players_v2(filtered_df)
+    recommendations_df = recommend_players_v2(filtered_df)
+        # Print top 10
+    st.subheader("Top 10 Recommended Players (Exponential-Weighted)")
+    st.write(recommendations_df.head(10))
+
+
+#### TEST ####
+# ... the rest of your app code above (tabs, filtering, etc.) ...
+
+# 5. Enhanced Recommendations UI
+st.markdown("### Enhanced Player Recommendations")
+
+# Let user set some parameters
+num_recommendations = st.slider(
+    "How many players to display?",
+    min_value=5,
+    max_value=30,
+    value=10
+)
+
+last_x_games_param = st.slider(
+    "How many recent games to analyze?",
+    min_value=1,
+    max_value=20,
+    value=5
+)
+
+alpha_param = st.slider(
+    "Recency Emphasis (Alpha)",
+    min_value=0.5,
+    max_value=0.99,
+    value=0.85,
+    step=0.01,
+    help="Higher alpha means older games still have weight; lower alpha emphasizes more recent games."
+)
+
+weight_eff = st.slider(
+    "Cost Efficiency Weight",
+    min_value=0.0,
+    max_value=5.0,
+    value=2.0,
+    step=0.1,
+    help="How much to reward players who produce a high PIR for a lower CR."
+)
+
+weight_mean = st.slider(
+    "Average PIR Weight",
+    min_value=0.0,
+    max_value=5.0,
+    value=1.0,
+    step=0.1,
+    help="How important is raw average PIR in the final score?"
+)
+
+weight_cons = st.slider(
+    "Consistency Penalty Weight",
+    min_value=0.0,
+    max_value=5.0,
+    value=1.0,
+    step=0.1,
+    help="How heavily to penalize high standard error (volatile performance)."
+)
+
+# Recommendation Button
+if st.button("Get Recommendations"):
+    recs = recommend_players_v2(
+        filtered_df,
+        last_x_games=last_x_games_param,
+        alpha=alpha_param,
+        weight_efficiency=weight_eff,
+        weight_mean_pir=weight_mean,
+        weight_consistency=weight_cons
+    )
+    if recs.empty:
+        st.warning("No recommendations available with the current filters.")
+    else:
+        # Show only top N
+        st.subheader(f"Top {num_recommendations} Recommendations")
+        st.dataframe(recs.head(num_recommendations))
+
+##############
 
 # 6. Data Download
 if not df.empty:

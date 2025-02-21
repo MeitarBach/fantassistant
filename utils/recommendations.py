@@ -156,8 +156,4 @@ def recommend_players_v2(df,
     # Sort by score descending
     recommendations_df = pd.DataFrame(recommendations).sort_values(by='Score', ascending=False)
 
-    # Print top 10
-    st.subheader("Top 10 Recommended Players (Exponential-Weighted)")
-    st.write(recommendations_df.head(10))
-
     return recommendations_df
