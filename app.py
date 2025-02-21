@@ -15,6 +15,10 @@ from utils.data_processing import (
 )
 from utils.recommendations import (recommend_players, recommend_players_v2)
 
+if "show_advanced" not in st.session_state:
+    st.session_state.show_advanced = False
+
+
 st.title("EuroLeague Fantassistant")
 
 # 1. Season Selection
@@ -203,78 +207,182 @@ if st.button("Get Top 10 Recommendations"):
 #### TEST ####
 # ... the rest of your app code above (tabs, filtering, etc.) ...
 
-# 5. Enhanced Recommendations UI
-st.markdown("### Enhanced Player Recommendations")
+# # 5. Enhanced Recommendations UI
+# st.markdown("### Enhanced Player Recommendations")
 
-# Let user set some parameters
-num_recommendations = st.slider(
-    "How many players to display?",
-    min_value=5,
-    max_value=30,
-    value=10
-)
+# # Let user set some parameters
+# num_recommendations = st.slider(
+#     "How many players to display?",
+#     min_value=5,
+#     max_value=30,
+#     value=10
+# )
 
-last_x_games_param = st.slider(
-    "How many recent games to analyze?",
-    min_value=1,
-    max_value=20,
-    value=5
-)
+# last_x_games_param = st.slider(
+#     "How many recent games to analyze?",
+#     min_value=1,
+#     max_value=20,
+#     value=5
+# )
 
-alpha_param = st.slider(
-    "Recency Emphasis (Alpha)",
-    min_value=0.5,
-    max_value=0.99,
-    value=0.85,
-    step=0.01,
-    help="Higher alpha means older games still have weight; lower alpha emphasizes more recent games."
-)
+# alpha_param = st.slider(
+#     "Recency Emphasis (Alpha)",
+#     min_value=0.5,
+#     max_value=0.99,
+#     value=0.85,
+#     step=0.01,
+#     help="Higher alpha means older games still have weight; lower alpha emphasizes more recent games."
+# )
 
-weight_eff = st.slider(
-    "Cost Efficiency Weight",
-    min_value=0.0,
-    max_value=5.0,
-    value=2.0,
-    step=0.1,
-    help="How much to reward players who produce a high PIR for a lower CR."
-)
+# weight_eff = st.slider(
+#     "Cost Efficiency Weight",
+#     min_value=0.0,
+#     max_value=5.0,
+#     value=2.0,
+#     step=0.1,
+#     help="How much to reward players who produce a high PIR for a lower CR."
+# )
 
-weight_mean = st.slider(
-    "Average PIR Weight",
-    min_value=0.0,
-    max_value=5.0,
-    value=1.0,
-    step=0.1,
-    help="How important is raw average PIR in the final score?"
-)
+# weight_mean = st.slider(
+#     "Average PIR Weight",
+#     min_value=0.0,
+#     max_value=5.0,
+#     value=1.0,
+#     step=0.1,
+#     help="How important is raw average PIR in the final score?"
+# )
 
-weight_cons = st.slider(
-    "Consistency Penalty Weight",
-    min_value=0.0,
-    max_value=5.0,
-    value=1.0,
-    step=0.1,
-    help="How heavily to penalize high standard error (volatile performance)."
-)
+# weight_cons = st.slider(
+#     "Consistency Penalty Weight",
+#     min_value=0.0,
+#     max_value=5.0,
+#     value=1.0,
+#     step=0.1,
+#     help="How heavily to penalize high standard error (volatile performance)."
+# )
 
-# Recommendation Button
-if st.button("Get Recommendations"):
-    recs = recommend_players_v2(
-        filtered_df,
-        last_x_games=last_x_games_param,
-        alpha=alpha_param,
-        weight_efficiency=weight_eff,
-        weight_mean_pir=weight_mean,
-        weight_consistency=weight_cons
-    )
-    if recs.empty:
-        st.warning("No recommendations available with the current filters.")
-    else:
-        # Show only top N
-        st.subheader(f"Top {num_recommendations} Recommendations")
-        st.dataframe(recs.head(num_recommendations))
+# # Recommendation Button
+# if st.button("Get Recommendations"):
+#     recs = recommend_players_v2(
+#         filtered_df,
+#         last_x_games=last_x_games_param,
+#         alpha=alpha_param,
+#         weight_efficiency=weight_eff,
+#         weight_mean_pir=weight_mean,
+#         weight_consistency=weight_cons
+#     )
+#     if recs.empty:
+#         st.warning("No recommendations available with the current filters.")
+#     else:
+#         # Show only top N
+#         st.subheader(f"Top {num_recommendations} Recommendations")
+#         st.dataframe(recs.head(num_recommendations))
 
 ##############
+
+##TEST2###
+if st.button("Advanced Recommendations"):
+    st.session_state.show_advanced = not st.session_state.show_advanced
+
+if st.session_state.show_advanced:
+    st.markdown("### Advanced Recommendation Settings")
+
+    # Put your sliders (and CR filter) inside a form
+    with st.form("advanced_recs_form"):
+        st.write("Customize your recommendation parameters below.")
+
+        # 1) Number of players to display
+        num_recommendations = st.slider(
+            "How many players to display?",
+            min_value=5,
+            max_value=30,
+            value=10
+        )
+        
+        # 2) How many recent games to consider
+        last_x_games_param = st.slider(
+            "Number of recent games",
+            min_value=1,
+            max_value=20,
+            value=5
+        )
+        
+        # 3) Recency emphasis (alpha)
+        alpha_param = st.slider(
+            "Recency factor (alpha)",
+            min_value=0.5,
+            max_value=0.99,
+            value=0.85,
+            step=0.01,
+            help="Higher alpha means older games still matter; lower alpha emphasizes recent games more."
+        )
+        
+        # 4) Weights
+        weight_eff = st.slider(
+            "Cost Efficiency Weight",
+            min_value=0.0,
+            max_value=5.0,
+            value=2.0,
+            step=0.1,
+            help="How strongly to reward players with high PIR/CR."
+        )
+        
+        weight_mean = st.slider(
+            "Average PIR Weight",
+            min_value=0.0,
+            max_value=5.0,
+            value=1.0,
+            step=0.1,
+            help="How strongly to emphasize raw average PIR."
+        )
+        
+        weight_cons = st.slider(
+            "Consistency Penalty Weight",
+            min_value=0.0,
+            max_value=5.0,
+            value=1.0,
+            step=0.1,
+            help="How heavily to penalize volatile players (high StdErr)."
+        )
+
+        # 5) CR Filter
+        # We'll do a range slider so user can set min/max CR for recommended players
+        min_cr_value = float(df['CR'].min()) if not df.empty else 0.0
+        max_cr_value = float(df['CR'].max()) if not df.empty else 35.0
+        cr_min, cr_max = st.slider(
+            "Filter by CR range:",
+            min_value=min_cr_value,
+            max_value=max_cr_value,
+            value=(min_cr_value, max_cr_value),
+            step=1.0
+        )
+
+        # Final "Generate" button for the form
+        generate_button = st.form_submit_button("Generate Recommendations")
+
+    # Only run the recommendation logic after form submission
+    if generate_button:
+        # 1) Filter the DataFrame by CR
+        advanced_filtered_df = df[
+            (df['CR'] >= cr_min) & (df['CR'] <= cr_max)
+        ].copy()
+        
+        # 2) Call your recommendation function
+        recs_df = recommend_players_v2(
+            advanced_filtered_df,
+            last_x_games=last_x_games_param,
+            alpha=alpha_param,
+            weight_efficiency=weight_eff,
+            weight_mean_pir=weight_mean,
+            weight_consistency=weight_cons
+        )
+
+        if recs_df.empty:
+            st.warning("No recommendations found with the chosen parameters.")
+        else:
+            st.subheader(f"Top {num_recommendations} Recommendations")
+            st.dataframe(recs_df.head(num_recommendations))
+##########
 
 # 6. Data Download
 if not df.empty:
