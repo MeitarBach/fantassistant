@@ -47,3 +47,117 @@ def recommend_players(df, last_x_games=10, lambda_decay=0.1, w1=1, w2=1, w3=1):
     recommendations_df = pd.DataFrame(recommendations).sort_values(by='Score', ascending=False)
     st.subheader("Top 10 Recommended Players Based on Weighted Formula")
     st.write(recommendations_df[['PlayerName', 'PIR_Avg', 'StdErr', 'CR', 'position', 'Score']].head(10))
+
+def recommend_players_v2(df, 
+                         last_x_games=5, 
+                         alpha=0.85, 
+                         weight_efficiency=2.0,
+                         weight_mean_pir=1.0,
+                         weight_consistency=1.0):
+    """
+    Recommend top players using:
+      - Exponential decay weighting for recent games
+      - Cost efficiency (PIR relative to CR)
+      - Consistency penalty (via std err)
+    
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        DataFrame with columns ['PlayerName', 'GameCode', 'PIR', 'CR', 'position'].
+    last_x_games : int
+        How many recent games to consider for each player.
+    alpha : float
+        Decay factor for exponential weighting (0 < alpha < 1).
+        Closer to 1.0 means older games still matter quite a bit; 
+        smaller means older games quickly become negligible.
+    weight_efficiency : float
+        The relative importance of cost-efficiency (PIR / CR).
+    weight_mean_pir : float
+        The relative importance of raw average PIR (exp-weighted).
+    weight_consistency : float
+        The importance of penalizing players for high volatility 
+        (higher means a bigger penalty for large std error).
+    """
+
+    # Basic checks
+    necessary_cols = {'PlayerName', 'PIR', 'CR', 'GameCode'}
+    if not necessary_cols.issubset(df.columns):
+        st.warning(f"DataFrame missing required columns: {necessary_cols - set(df.columns)}")
+        return
+
+    # Group by player
+    grouped = df.groupby('PlayerName', group_keys=True)
+    recommendations = []
+
+    for player_name, player_data in grouped:
+        # Sort player's games by descending GameCode
+        player_data_sorted = player_data.sort_values('GameCode', ascending=False).head(last_x_games)
+
+        # If no games in the chosen range, skip
+        if player_data_sorted.empty:
+            continue
+
+        # Extract CR and position from the most recent record for convenience
+        cr = player_data_sorted['CR'].iloc[0] if 'CR' in player_data_sorted else np.nan
+        position = player_data_sorted['position'].iloc[0] if 'position' in player_data_sorted else "Unknown"
+
+        # If CR is 0 or invalid, skip or set a large cost to avoid dividing by zero
+        if not cr or cr <= 0:
+            cr = np.inf
+
+        # 1. Exponential Weighted Mean PIR
+        #    For the i-th game (from most recent to oldest), weight = alpha^i
+        #    More recent = smaller i, bigger weight.
+        pir_values = player_data_sorted['PIR'].values[::-1]  # oldest -> newest
+        weights = np.array([alpha**i for i in range(len(pir_values))])[::-1]  # newest -> oldest
+        # Re-reverse so it lines up properly
+        # Alternatively, you could just compute alpha^(len-1 - i)
+
+        weighted_sum = np.sum(pir_values * weights)
+        total_weights = np.sum(weights)
+        exp_weighted_pir = weighted_sum / total_weights if total_weights > 0 else 0
+
+        # 2. Cost Efficiency (Ex: (Average PIR / CR) or (exp_weighted_pir / CR))
+        efficiency = exp_weighted_pir / cr if cr > 0 else 0
+
+        # 3. Consistency Penalty -> standard deviation or standard error
+        #    We can measure how stable the player's recent PIR is.
+        pir_std = player_data_sorted['PIR'].std(ddof=1) if len(player_data_sorted) > 1 else 0
+        n_games = len(player_data_sorted)
+        stderr = pir_std / np.sqrt(n_games) if n_games > 0 else 0
+
+        # Combine them into a single score
+        # The logic: 
+        #   score = weight_mean_pir*(exp_weighted_pir) 
+        #          + weight_efficiency*(efficiency) 
+        #          - weight_consistency*(stderr)
+        # 
+        # Tweak the coefficients to your preference
+        score = (
+            weight_mean_pir * exp_weighted_pir
+            + weight_efficiency * efficiency
+            - weight_consistency * stderr
+        )
+
+        recommendations.append({
+            'PlayerName': player_name,
+            'ExpWeightedPIR': exp_weighted_pir,
+            'Efficiency': efficiency,
+            'CR': cr,
+            'position': position,
+            'StdErr': stderr,
+            'Score': score
+        })
+
+    if not recommendations:
+        st.warning("No valid players found based on the given data.")
+        return
+
+    # Sort by score descending
+    recommendations_df = pd.DataFrame(recommendations).sort_values(by='Score', ascending=False)
+
+    # Print top 10
+    st.subheader("Top 10 Recommended Players (Exponential-Weighted)")
+    st.write(recommendations_df.head(10))
+
+    return recommendations_df
