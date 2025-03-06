@@ -6,7 +6,6 @@ import numpy as np
 import plotly.express as px
 
 # Import utils
-from utils.data_fetchers import fetch_and_update_player_stats
 from utils.data_processing import (
     load_and_merge_data,
     filter_by_cr_and_position,
@@ -29,7 +28,6 @@ season_code = f"E{selected_season}"
 
 # 2. File Name and Data Loading
 data_file = f'player_stats_{selected_season}.csv'
-# df = fetch_and_update_player_stats(data_file, season_code)
 df = load_and_merge_data(data_file)
 
 if not df.empty:
@@ -307,13 +305,13 @@ if st.session_state.show_advanced:
             st.dataframe(recs_df.head(num_recommendations))
 ##########
 
-# 6. Data Download
-if not df.empty:
-    st.markdown("### Download Player Data")
-    csv = df.to_csv(index=False)
-    st.download_button(
-        label="Download CSV",
-        data=csv,
-        file_name='player_stats.csv',
-        mime='text/csv'
-    )
+# # 6. Data Download
+# if not df.empty:
+#     st.markdown("### Download Player Data")
+#     csv = df.to_csv(index=False)
+#     st.download_button(
+#         label="Download CSV",
+#         data=csv,
+#         file_name='player_stats.csv',
+#         mime='text/csv'
+#     )
