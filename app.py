@@ -29,7 +29,7 @@ season_code = f"E{selected_season}"
 
 # 2. File Name and Data Loading
 data_file = f'player_stats_{selected_season}.csv'
-df = fetch_and_update_player_stats(data_file, season_code)
+# df = fetch_and_update_player_stats(data_file, season_code)
 df = load_and_merge_data(data_file)
 
 if not df.empty:

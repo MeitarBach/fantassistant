@@ -12,3 +12,6 @@ __pycache__/
 
 # Virtual environment
 venv/
+
+lambda_package/
+lambda_package.zip
