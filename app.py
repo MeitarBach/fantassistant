@@ -18,7 +18,8 @@ if "show_advanced" not in st.session_state:
     st.session_state.show_advanced = False
 
 
-st.title("EuroLeague Fantassistant")
+st.title("EuroGuru")
+st.markdown("### Euroleague Fantasy Challenge Assistant")
 
 # 1. Season Selection
 st.markdown("### Season Selection")
