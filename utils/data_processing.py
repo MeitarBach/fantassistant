@@ -6,7 +6,7 @@ import streamlit as st
 from .s3_utils import load_from_s3
 from .data_fetchers import fetch_and_save_cr_data
 
-def load_and_merge_data(player_stats_file):
+def load_and_merge_data(player_stats_file, player_cr_file = 'player_cr_data.csv'):
     """
     Loads player stats and merges with CR data from 'player_cr_data.csv'.
     If the CR data is missing, fetch it on the fly.
@@ -14,9 +14,7 @@ def load_and_merge_data(player_stats_file):
     player_stats_df = load_from_s3(player_stats_file)
 
     # Attempt to load from S3; if empty, fetch fresh CR data
-    cr_df = load_from_s3("player_cr_data.csv")
-    if cr_df.empty:
-        cr_df = fetch_and_save_cr_data()
+    cr_df = load_from_s3(player_cr_file)
 
     # Format PlayerName in your stats file to match CR dataset
     def format_name(name):

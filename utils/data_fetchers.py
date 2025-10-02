@@ -3,6 +3,7 @@
 import requests
 import pandas as pd
 import streamlit as st
+from datetime import datetime
 from .s3_utils import load_from_s3, save_to_s3
 
 def fetch_and_save_cr_data():
@@ -10,11 +11,41 @@ def fetch_and_save_cr_data():
     Fetch CR data from the dunkest API and save it to S3.
     """
     api_url = ("https://www.dunkest.com/api/stats/table?"
-               "season_id=17&mode=dunkest&stats_type=tot&weeks%5B%5D=2&rounds%5B%5D=1&rounds%5B%5D=2&rounds%5B%5D=3&"
-               "teams%5B%5D=31&teams%5B%5D=32&teams%5B%5D=33&teams%5B%5D=34&teams%5B%5D=35&teams%5B%5D=36&teams%5B%5D=37&"
-               "teams%5B%5D=38&teams%5B%5D=39&teams%5B%5D=40&teams%5B%5D=41&teams%5B%5D=42&teams%5B%5D=43&teams%5B%5D=44&"
-               "teams%5B%5D=45&teams%5B%5D=47&teams%5B%5D=48&teams%5B%5D=60&positions%5B%5D=1&positions%5B%5D=2&positions%5B%5D=3&"
-               "player_search=&min_cr=4&max_cr=35&sort_by=pdk&sort_order=desc&iframe=yes")
+    "season_id=23&"
+    "mode=dunkest&"
+    "stats_type=tot&"
+    "weeks%5B%5D=1&"
+    "rounds%5B%5D=1&"
+    "rounds%5B%5D=2&"
+    "teams%5B%5D=32&"
+    "teams%5B%5D=33&"
+    "teams%5B%5D=34&"
+    "teams%5B%5D=35&"
+    "teams%5B%5D=36&"
+    "teams%5B%5D=37&"
+    "teams%5B%5D=38&"
+    "teams%5B%5D=39&"
+    "teams%5B%5D=40&"
+    "teams%5B%5D=41&"
+    "teams%5B%5D=42&"
+    "teams%5B%5D=43&"
+    "teams%5B%5D=44&"
+    "teams%5B%5D=45&"
+    "teams%5B%5D=46&"
+    "teams%5B%5D=47&"
+    "teams%5B%5D=48&"
+    "teams%5B%5D=56&"
+    "teams%5B%5D=60&"
+    "teams%5B%5D=75&"
+    "positions%5B%5D=1&"
+    "positions%5B%5D=2&"
+    "positions%5B%5D=3&"
+    "player_search=&"
+    "min_cr=4&"
+    "max_cr=35&"
+    "sort_by=pdk&"
+    "sort_order=desc&"
+    "iframe=yes")
 
     response = requests.get(api_url)
     cr_data = response.json()
@@ -25,8 +56,11 @@ def fetch_and_save_cr_data():
     cr_df['CR'] = pd.to_numeric(cr_df['CR'], errors='coerce')
     cr_df['position'] = cr_df['position'].astype(str)
 
-    save_to_s3("player_cr_data.csv", cr_df)
-    print("Player CR and Position data saved to player_cr_data.csv")
+    today = datetime.today().strftime("%Y-%m-%d")
+    filename = f"player_cr_data_{today}.csv"
+
+    save_to_s3(filename, cr_df)
+    print(f"Player CR and Position data saved to {filename}")
     return cr_df
 
 def fetch_and_update_player_stats(data_file, season_code):

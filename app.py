@@ -4,6 +4,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+from datetime import datetime
 
 # Import utils
 from utils.data_processing import (
@@ -23,13 +24,17 @@ st.markdown("### Euroleague Fantasy Challenge Assistant")
 
 # 1. Season Selection
 st.markdown("### Season Selection")
-season_options = ['2023', '2024']
-selected_season = st.selectbox("Pick a season:", season_options, index=1)
+season_options = ['2023', '2024', '2025']
+selected_season = st.selectbox("Pick a season:", season_options, index=(len(season_options)-1))
 season_code = f"E{selected_season}"
 
 # 2. File Name and Data Loading
 data_file = f'player_stats_{selected_season}.csv'
 df = load_and_merge_data(data_file)
+if selected_season == '2025':
+    today = datetime.today().strftime("%Y-%m-%d")
+    cr_file = f"player_cr_data_{today}.csv"
+    df = load_and_merge_data(data_file, cr_file)
 
 if not df.empty:
     last_stored_game_code = df['GameCode'].max()
