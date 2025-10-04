@@ -15,12 +15,21 @@ from utils.data_processing import (
 )
 from utils.recommendations import (recommend_players, recommend_players_v2)
 
+st.set_page_config(page_title="EuroGuru")
+
+
 if "show_advanced" not in st.session_state:
     st.session_state.show_advanced = False
 
 
 st.title("EuroGuru")
-st.markdown("### Euroleague Fantasy Challenge Assistant")
+st.header("Euroleague Fantasy Challenge Assistant & Analytics Tool")
+st.markdown("""
+            **EuroGuru is your go-to assistant for the Euroleague Fantasy Challenge.** 
+            Access player stats, boxscores, injury reports, and interactive data visualizations.
+            Explore advanced player analytics, smart filters, lineup recommendations, and performance forecasting.
+            Everything you need to build the perfect Euroleague Fantasy team roster, all in one place.
+            """)
 
 # 1. Season Selection
 st.markdown("### Season Selection")
@@ -32,10 +41,6 @@ season_code = f"E{selected_season}"
 data_file = f'player_stats_{selected_season}.csv'
 cr_file_prefix = 'player_cr_data'
 df = load_and_merge_data(data_file, cr_file_prefix)
-# if selected_season == '2025':
-#     today = datetime.today().strftime("%Y-%m-%d")
-#     cr_file = f"player_cr_data_{today}.csv"
-#     df = load_and_merge_data(data_file, cr_file)
 
 if not df.empty:
     last_stored_game_code = df['GameCode'].max()
