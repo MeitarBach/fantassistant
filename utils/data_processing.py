@@ -4,30 +4,64 @@ import pandas as pd
 import numpy as np
 import streamlit as st
 from .s3_utils import load_from_s3
-from .data_fetchers import fetch_and_save_cr_data
+from datetime import datetime, timedelta
 
-def load_and_merge_data(player_stats_file, player_cr_file = 'player_cr_data.csv'):
+
+def load_and_merge_data(player_stats_file: str,
+                        cr_prefix: str = "player_cr_data",
+                        max_lookback_days: int = 14):
     """
-    Loads player stats and merges with CR data from 'player_cr_data.csv'.
-    If the CR data is missing, fetch it on the fly.
+    Loads player stats and merges with the most recent CR data file named like:
+    player_cr_data_YYYY-MM-DD.csv. Walks back day-by-day if today's file is missing.
     """
     player_stats_df = load_from_s3(player_stats_file)
 
-    # Attempt to load from S3; if empty, fetch fresh CR data
-    cr_df = load_from_s3(player_cr_file)
+    # Find & load the most recent CR file
+    cr_df, cr_key = _load_latest_cr_df(prefix=cr_prefix, max_lookback_days=max_lookback_days)
+    print(f"Cr data loaded from file {cr_key}")
 
-    # Format PlayerName in your stats file to match CR dataset
-    def format_name(name):
+    # Align names: "Last, First" -> "First Last"
+    def format_name(name: str):
         parts = name.split(", ")
         return f"{parts[1].capitalize()} {parts[0].capitalize()}" if len(parts) == 2 else name
 
+    player_stats_df = player_stats_df.copy()
     player_stats_df['PlayerName'] = player_stats_df['PlayerName'].apply(format_name)
 
     merged_df = pd.merge(player_stats_df, cr_df, on="PlayerName", how="left")
-    merged_df['CR'] = pd.to_numeric(merged_df['CR'], errors='coerce')
-    merged_df['position'] = merged_df['position'].astype(str)
+    merged_df['CR'] = pd.to_numeric(merged_df.get('CR'), errors='coerce')
+    if 'position' in merged_df.columns:
+        merged_df['position'] = merged_df['position'].astype(str)
 
     return merged_df
+
+def _load_latest_cr_df(prefix: str = "player_cr_data_", max_lookback_days: int = 14):
+    """
+    Try to load the most recent CR CSV by walking back from today, up to max_lookback_days.
+    Returns (cr_df, key) on success.
+    Raises FileNotFoundError if none found.
+    """
+    today = datetime.today().date()
+    last_error = None
+
+    for d in range(max_lookback_days + 1):
+        day = today - timedelta(days=d)
+        key = f"{prefix}_{day.isoformat()}.csv"
+        try:
+            cr_df = load_from_s3(key)
+            if cr_df is not None and not cr_df.empty:
+                return cr_df, key
+        except FileNotFoundError as e:
+            last_error = e
+            # try previous day
+        except Exception as e:
+            # If some transient/read error occurs, skip this date and try earlier
+            last_error = e
+            # continue loop
+
+    raise FileNotFoundError(
+        f"No CR file found with prefix '{prefix}' in the last {max_lookback_days} days."
+    ) from last_error
 
 def filter_by_cr_and_position(df, min_cr, max_cr, position):
     """

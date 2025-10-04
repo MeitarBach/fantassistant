@@ -30,11 +30,12 @@ season_code = f"E{selected_season}"
 
 # 2. File Name and Data Loading
 data_file = f'player_stats_{selected_season}.csv'
-df = load_and_merge_data(data_file)
-if selected_season == '2025':
-    today = datetime.today().strftime("%Y-%m-%d")
-    cr_file = f"player_cr_data_{today}.csv"
-    df = load_and_merge_data(data_file, cr_file)
+cr_file_prefix = 'player_cr_data'
+df = load_and_merge_data(data_file, cr_file_prefix)
+# if selected_season == '2025':
+#     today = datetime.today().strftime("%Y-%m-%d")
+#     cr_file = f"player_cr_data_{today}.csv"
+#     df = load_and_merge_data(data_file, cr_file)
 
 if not df.empty:
     last_stored_game_code = df['GameCode'].max()
