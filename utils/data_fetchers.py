@@ -2,7 +2,6 @@
 
 import requests
 import pandas as pd
-import streamlit as st
 from datetime import datetime
 from .s3_utils import load_from_s3, save_to_s3
 
@@ -149,3 +148,35 @@ def fetch_and_update_player_stats(data_file, season_code):
 
     # If no new data was fetched, return the existing df
     return df
+
+def fetch_and_save_injury_report():
+    """
+    Fetch EuroLeague injury report from Rotowire and save it to S3 as injury_report_YYYY-MM-DD.csv.
+    Returns the cleaned DataFrame.
+    """
+    api_url = "https://www.rotowire.com/euro/tables/injury-report.php?team=ALL&pos=ALL"
+
+    try:
+        response = requests.get(api_url, timeout=10)
+        response.raise_for_status()
+        injuries = response.json()
+    except Exception as e:
+        print(f"[injury] fetch error: {e}")
+        return pd.DataFrame()
+
+    injuries_df = pd.DataFrame(injuries)
+
+    # Drop columns if they exist (keeps it robust to schema changes)
+    for col in ["ID", "playerURL", "rDate"]:
+        if col in injuries_df.columns:
+            injuries_df = injuries_df.drop(columns=col)
+
+    # Light cleanup
+    if "Player" in injuries_df.columns:
+        injuries_df["Player"] = injuries_df["Player"].astype(str).str.strip()
+
+    filename = f"injury_report.csv"
+
+    save_to_s3(filename, injuries_df)
+    print(f"Injury report saved to {filename}")
+    return injuries_df

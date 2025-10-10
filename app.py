@@ -11,7 +11,8 @@ from utils.data_processing import (
     load_and_merge_data,
     filter_by_cr_and_position,
     calculate_pir_stats,
-    get_dominant_players
+    get_dominant_players,
+    load_injuries_df
 )
 from utils.recommendations import (recommend_players, recommend_players_v2)
 
@@ -81,12 +82,21 @@ else:
 show_dominant = st.checkbox("Show Dominant Players Only")
 
 # 4. Analysis Tabs
-tab1, tab2, tab3, tab4 = st.tabs([
+# tab1, tab2, tab3, tab4 = st.tabs([
+#     "PIR & Std. Deviation",
+#     "PIR & CR",
+#     "PIR Averages",
+#     "Boxscores"
+# ])
+
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "PIR & Std. Deviation",
     "PIR & CR",
     "PIR Averages",
-    "Boxscores"
+    "Boxscores",
+    "Injuries"
 ])
+
 
 # -- Tab 1: PIR vs. StdDev --
 with tab1:
@@ -202,6 +212,16 @@ with tab4:
         )
         st.markdown("**Average Stats by Player & Position**")
         st.dataframe(avg_stats)
+
+# -- Tab 5: Injuries --
+with tab5:
+    st.subheader("Injury Report")
+    inj_df = load_injuries_df()  # change key if you use a dated filename
+    if inj_df.empty:
+        st.info("No injury data available.")
+    else:
+        st.dataframe(inj_df, use_container_width=True, hide_index=True)
+
 
 # 5. Recommendations
 st.markdown("### Player Recommendations")

@@ -125,3 +125,43 @@ def get_dominant_players(df):
         if not dominated:
             dominant_players.append(player)
     return pd.DataFrame(dominant_players)
+
+# --- Injuries helpers --- #
+@st.cache_data(ttl=10 * 60)  # cache for 10 minutes
+def load_injuries_df(key: str = "injury_report.csv") -> pd.DataFrame:
+    """
+    Load injuries CSV from S3 and normalize column names:
+    expects columns like: player, team, position, injury, status (others are ignored).
+    """
+    try:
+        df = load_from_s3(key)
+    except Exception as e:
+        st.warning(f"Could not load injuries: {e}")
+        return pd.DataFrame()
+
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    # Map raw -> canonical
+    rename = {
+        "firstname": "First Name",
+        "lastname": "Last Name",
+        "player": "Player",
+        "team": "Team",
+        "position": "Position",
+        "injury": "Injury",
+        "status": "Injury Status",
+    }
+    df = df.rename(columns={c: rename.get(c, c) for c in df.columns})
+
+    # Light cleanup
+    for c in ["Player", "Team", "Position", "Injury", "InjuryStatus", "Notes"]:
+        if c in df.columns:
+            df[c] = df[c].astype(str).str.strip()
+
+    # Friendly sort if available
+    sort_cols = [c for c in ["Team", "Player"] if c in df.columns]
+    if sort_cols:
+        df = df.sort_values(sort_cols).reset_index(drop=True)
+
+    return df
