@@ -4,7 +4,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-from datetime import datetime
+# from datetime import datetime
+from utils.pd_utils import select_cols
 
 # Import utils
 from utils.data_processing import (
@@ -12,7 +13,8 @@ from utils.data_processing import (
     filter_by_cr_and_position,
     calculate_pir_stats,
     get_dominant_players,
-    load_injuries_df
+    load_injuries_df,
+    add_injury_badge
 )
 from utils.recommendations import (recommend_players, recommend_players_v2)
 
@@ -103,6 +105,7 @@ with tab1:
     st.subheader("PIR vs. Standard Deviation")
     last_games = last_x_games if last_x_games else df['GameCode'].nunique()
     last_games_stats = calculate_pir_stats(filtered_df, last_games)
+    last_games_stats = add_injury_badge(last_games_stats)
 
     if not last_games_stats.empty:
         if show_dominant:
@@ -118,17 +121,21 @@ with tab1:
                 'Average_PIR': ':.2f',
                 'StdDev_PIR': ':.2f',
                 'position': True,
-                'CR': True
+                'CR': True,
+                # 'InjuryStatus': True,   # new
+                # 'Injury': True          # new
             },
-            custom_data=['PlayerName', 'Average_PIR', 'StdDev_PIR', 'position', 'CR'],
-            title=f'Average PIR vs. Std. Deviation (Last {last_games} Games)',
-            labels={'StdDev_PIR': 'Std. Dev. of PIR', 'Average_PIR': 'Average PIR'},
-            color_continuous_scale=px.colors.sequential.Plasma
-        )
+        custom_data=['PlayerName','Average_PIR','StdDev_PIR','position','CR','InjuryBadge'],
+        title=f'Average PIR vs. Std. Deviation (Last {last_games} Games)',
+        labels={'StdDev_PIR': 'Std. Dev. of PIR', 'Average_PIR': 'Average PIR'},
+        color_continuous_scale=px.colors.sequential.Plasma)
         fig.update_traces(
-            hovertemplate="<b>%{customdata[0]}</b><br>Avg PIR: %{customdata[1]:.2f}"
-                          "<br>Std. Dev.: %{customdata[2]:.2f}<br>Position: %{customdata[3]}"
-                          "<br>CR: %{customdata[4]:.2f}"
+            hovertemplate="<b>%{customdata[0]}</b>"
+                        "<br>Avg PIR: %{customdata[1]:.2f}"
+                        "<br>Std. Dev.: %{customdata[2]:.2f}"
+                        "<br>Position: %{customdata[3]}"
+                        "<br>CR: %{customdata[4]:.2f}"
+                        "%{customdata[5]}"
         )
         fig.update_layout(
             autosize=False,
@@ -140,11 +147,54 @@ with tab1:
     else:
         st.info("Not enough data to display PIR vs. Standard Deviation.")
 
+# # -- Tab 1: PIR vs. StdDev --
+# with tab1:
+#     st.subheader("PIR vs. Standard Deviation")
+#     last_games = last_x_games if last_x_games else df['GameCode'].nunique()
+#     last_games_stats = calculate_pir_stats(filtered_df, last_games)
+
+#     if not last_games_stats.empty:
+#         if show_dominant:
+#             last_games_stats = get_dominant_players(last_games_stats)
+        
+#         fig = px.scatter(
+#             last_games_stats,
+#             x='StdDev_PIR',
+#             y='Average_PIR',
+#             color='Average_PIR',
+#             hover_data={
+#                 'PlayerName': True,
+#                 'Average_PIR': ':.2f',
+#                 'StdDev_PIR': ':.2f',
+#                 'position': True,
+#                 'CR': True
+#             },
+#             custom_data=['PlayerName', 'Average_PIR', 'StdDev_PIR', 'position', 'CR'],
+#             title=f'Average PIR vs. Std. Deviation (Last {last_games} Games)',
+#             labels={'StdDev_PIR': 'Std. Dev. of PIR', 'Average_PIR': 'Average PIR'},
+#             color_continuous_scale=px.colors.sequential.Plasma
+#         )
+#         fig.update_traces(
+#             hovertemplate="<b>%{customdata[0]}</b><br>Avg PIR: %{customdata[1]:.2f}"
+#                           "<br>Std. Dev.: %{customdata[2]:.2f}<br>Position: %{customdata[3]}"
+#                           "<br>CR: %{customdata[4]:.2f}"
+#         )
+#         fig.update_layout(
+#             autosize=False,
+#             width=900,
+#             height=700,
+#             plot_bgcolor='white'
+#         )
+#         st.plotly_chart(fig)
+#     else:
+#         st.info("Not enough data to display PIR vs. Standard Deviation.")
+
 # -- Tab 2: PIR vs. CR --
 with tab2:
     st.subheader("PIR vs. CR (Cost)")
     last_games = last_x_games if last_x_games else df['GameCode'].nunique()
     last_games_stats = calculate_pir_stats(filtered_df, last_games)
+    last_games_stats = add_injury_badge(last_games_stats)
     if not last_games_stats.empty:
         fig = px.scatter(
             last_games_stats,
@@ -157,7 +207,7 @@ with tab2:
                 'CR': ':.2f',
                 'position': True
             },
-            custom_data=['PlayerName', 'Average_PIR', 'CR', 'position'],
+            custom_data=['PlayerName', 'Average_PIR', 'CR', 'position', 'InjuryBadge'],
             title=f'Average PIR vs. CR (Last {last_games} Games)',
             labels={'CR': 'Cost (CR)', 'Average_PIR': 'Average PIR'},
             color_continuous_scale=px.colors.sequential.Viridis
@@ -165,6 +215,7 @@ with tab2:
         fig.update_traces(
             hovertemplate="<b>%{customdata[0]}</b><br>Avg PIR: %{customdata[1]:.2f}"
                           "<br>CR: %{customdata[2]:.2f}<br>Position: %{customdata[3]}"
+                          "%{customdata[4]}"
         )
         fig.update_layout(
             autosize=False,
@@ -182,7 +233,10 @@ with tab3:
     last_games = last_x_games if last_x_games else df['GameCode'].nunique()
     last_games_stats = calculate_pir_stats(filtered_df, last_games)
     if not last_games_stats.empty:
-        st.dataframe(last_games_stats)
+        # st.dataframe(last_games_stats)
+        SUMMARY_COLS = ["PlayerName", "Average_PIR", "StdDev_PIR", "CR", "position"]
+        view = select_cols(last_games_stats, SUMMARY_COLS)
+        st.dataframe(view, use_container_width=True, hide_index=True)
     else:
         st.info("No average PIR data available.")
 
@@ -200,18 +254,13 @@ with tab4:
         filtered_df_boxscore = filtered_df[filtered_df['GameCode'].isin(latest_game_codes)]
 
     st.markdown(f"**Boxscore Stats** ({boxscore_selected_option})")
-    st.dataframe(filtered_df_boxscore)
-
-    if st.checkbox("View Average Stats", key='average_stats'):
-        numeric_cols = filtered_df_boxscore.select_dtypes(include=np.number).columns.tolist()
-        avg_stats = (
-            filtered_df_boxscore
-            .groupby(['PlayerName', 'position'])[numeric_cols]
-            .mean()
-            .reset_index()
-        )
-        st.markdown("**Average Stats by Player & Position**")
-        st.dataframe(avg_stats)
+    # st.dataframe(filtered_df_boxscore)
+    BOX_COLS = [
+        "GameCode", "PlayerName", "position", "CR",
+        "PIR", "Points", "Rebounds", "Assists", "Steals", "Blocks", "Turnovers", "Minutes"
+    ]
+    box_view = select_cols(filtered_df_boxscore, BOX_COLS)
+    st.dataframe(box_view, use_container_width=True, hide_index=True)
 
 # -- Tab 5: Injuries --
 with tab5:
