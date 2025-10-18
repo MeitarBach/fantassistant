@@ -43,7 +43,7 @@ def user_sidebar():
                 st.button("Log out", use_container_width=True, on_click=st.logout)
             else:
                 st.markdown("**Not signed in**")
-                st.caption("Log in to save preferences and personalize recommendations.")
+                st.caption("Log in to unlock EuroGuru full experience.")
                 st.button("Log in", use_container_width=True, on_click=lambda: st.login("auth0"))
 
         st.divider()
