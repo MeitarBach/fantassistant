@@ -9,42 +9,29 @@ def fetch_and_save_cr_data():
     """
     Fetch CR data from the dunkest API and save it to S3.
     """
-    api_url = ("https://www.dunkest.com/api/stats/table?"
-    "season_id=23&"
-    "mode=dunkest&"
-    "stats_type=tot&"
-    "weeks%5B%5D=1&"
-    "rounds%5B%5D=1&"
-    "rounds%5B%5D=2&"
-    "teams%5B%5D=32&"
-    "teams%5B%5D=33&"
-    "teams%5B%5D=34&"
-    "teams%5B%5D=35&"
-    "teams%5B%5D=36&"
-    "teams%5B%5D=37&"
-    "teams%5B%5D=38&"
-    "teams%5B%5D=39&"
-    "teams%5B%5D=40&"
-    "teams%5B%5D=41&"
-    "teams%5B%5D=42&"
-    "teams%5B%5D=43&"
-    "teams%5B%5D=44&"
-    "teams%5B%5D=45&"
-    "teams%5B%5D=46&"
-    "teams%5B%5D=47&"
-    "teams%5B%5D=48&"
-    "teams%5B%5D=56&"
-    "teams%5B%5D=60&"
-    "teams%5B%5D=75&"
-    "positions%5B%5D=1&"
-    "positions%5B%5D=2&"
-    "positions%5B%5D=3&"
-    "player_search=&"
-    "min_cr=4&"
-    "max_cr=35&"
-    "sort_by=pdk&"
-    "sort_order=desc&"
-    "iframe=yes")
+    # Construct URL parameters dynamically
+    base_url = "https://www.dunkest.com/api/stats/table"
+    params = [
+        "season_id=23",
+        "mode=dunkest",
+        "stats_type=tot",
+        "player_search=",
+        "min_cr=4",
+        "max_cr=35",
+        "sort_by=pdk",
+        "sort_order=desc",
+        "iframe=yes"
+    ]
+
+    # Add weeks 1-40
+    for w in range(1, 41):
+        params.append(f"weeks%5B%5D={w}")
+    
+    # Add rounds 1-80
+    for r in range(1, 81):
+        params.append(f"rounds%5B%5D={r}")
+
+    api_url = f"{base_url}?{'&'.join(params)}"
 
     response = requests.get(api_url)
     cr_data = response.json()
