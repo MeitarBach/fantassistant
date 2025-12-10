@@ -167,3 +167,52 @@ def fetch_and_save_injury_report():
     save_to_s3(filename, injuries_df)
     print(f"Injury report saved to {filename}")
     return injuries_df
+
+def fetch_and_save_defense_vs_position_data():
+    """
+    Fetch 'defense vs position' data from Dunkest API for Guards, Forwards, and Centers,
+    combine them, and save to S3.
+    """
+    positions = {
+        1: 'Guard',
+        2: 'Forward',
+        3: 'Center'
+    }
+    
+    all_data = []
+
+    for pos_id, pos_name in positions.items():
+        # URL provided by user
+        url = f"https://www.dunkest.com/api/stats/defense-vs-position?season_id=23&stats_id=25&position_id={pos_id}"
+        print(f"Fetching defense data for {pos_name} (ID: {pos_id})...")
+        
+        try:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            # The API returns a list of objects. We add them to our master list.
+            # We'll attach the position name/id to each row if it's not already there clearly.
+            # However, looking at standard API responses, it's safer to add it explicitly.
+            for row in data:
+                row['Position'] = pos_name
+                row['PositionID'] = pos_id
+                all_data.append(row)
+                
+        except Exception as e:
+            print(f"Error fetching data for {pos_name}: {e}")
+
+    if not all_data:
+        print("No defense vs position data fetched.")
+        return pd.DataFrame()
+
+    df = pd.DataFrame(all_data)
+    
+    # Generate filename with today's date
+    today = datetime.today().strftime("%Y-%m-%d")
+    filename = f"defense_vs_position_{today}.csv"
+
+    save_to_s3(filename, df)
+    print(f"Defense vs Position data saved to {filename} with {len(df)} rows.")
+    return df
+
