@@ -13,7 +13,9 @@ from utils.data_processing import (
     calculate_pir_stats,
     get_dominant_players,
     load_injuries_df,
-    add_injury_badge
+    load_injuries_df,
+    add_injury_badge,
+    load_defense_vs_position_df
 )
 from utils.recommendations import (recommend_players, recommend_players_v2)
 
@@ -112,20 +114,22 @@ def main_view():
     show_dominant = st.checkbox("Show Dominant Players Only")
 
     if not is_logged_in:
-        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
             "PIR & Std. Deviation (Open Preview)",
             "PIR & CR 🔒",
             "PIR Averages 🔒",
             "Boxscores 🔒",
-            "Injuries 🔒"
+            "Injuries 🔒",
+            "Defense vs Position 🔒"
         ])
     else:
-        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
             "PIR & Std. Deviation",
             "PIR & CR",
             "PIR Averages",
             "Boxscores",
-            "Injuries"
+            "Injuries",
+            "Defense vs Position"
         ])
 
 
@@ -451,6 +455,56 @@ def main_view():
                     unsafe_allow_html=True
                 )
 
+
+    # 5. Recommendations
+    # -- Tab 6: Defense vs Position --
+    with tab6:
+        if is_logged_in:
+            st.subheader("Defense vs Position Stats")
+            def_df = load_defense_vs_position_df()
+            if def_df.empty:
+                st.info("No Defense vs Position data available.")
+            else:
+                st.dataframe(def_df, use_container_width=True, hide_index=True)
+        else:
+            st.subheader("Defense vs Position Stats — Locked")
+            st.info("🔒 Log in to see Defense vs Position stats")
+            
+            def_df = load_defense_vs_position_df()
+            if def_df.empty:
+                st.info("No data available for preview.")
+            else:
+                # Preview first few rows/cols
+                preview = def_df.head(10)
+                
+                fig_mpl = plt.figure(figsize=(10, 4), dpi=120)
+                ax = fig_mpl.gca()
+                ax.axis("off")
+                tbl = ax.table(
+                    cellText=preview.values,
+                    colLabels=preview.columns,
+                    loc="center",
+                    cellLoc="center",
+                )
+                tbl.auto_set_font_size(False)
+                tbl.set_fontsize(8)
+                tbl.scale(1.1, 1.2)
+
+                buf = BytesIO()
+                fig_mpl.savefig(buf, format="png", bbox_inches="tight")
+                plt.close(fig_mpl)
+                buf.seek(0)
+                b64 = base64.b64encode(buf.read()).decode("ascii")
+
+                st.markdown(
+                    f"""
+                    <div class="blurwrap">
+                    <img class="blurred" src="data:image/png;base64,{b64}" />
+                    <div class="lock-note">🔒 Log in to unlock stats</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
 
     # 5. Recommendations
     st.markdown("### Player Recommendations")

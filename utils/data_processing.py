@@ -326,3 +326,25 @@ def add_injury_badge(df: pd.DataFrame) -> pd.DataFrame:
         out["InjuryBadge"] = ""
 
     return out
+
+def load_defense_vs_position_df(max_lookback_days: int = 14) -> pd.DataFrame:
+    """
+    Load the most recent defense vs position CSV by walking back from today.
+    Returns empty DataFrame if not found.
+    """
+    prefix = "defense_vs_position"
+    today = datetime.today().date()
+    
+    for d in range(max_lookback_days + 1):
+        day = today - timedelta(days=d)
+        key = f"{prefix}_{day.isoformat()}.csv"
+        try:
+            df = load_from_s3(key)
+            if df is not None and not df.empty:
+                print(f"Defense data loaded from file {key}")
+                return df
+        except Exception:
+            continue
+            
+    print(f"No Defense file found with prefix '{prefix}' in the last {max_lookback_days} days.")
+    return pd.DataFrame()
