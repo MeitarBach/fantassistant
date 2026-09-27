@@ -6,8 +6,10 @@ import streamlit as st
 # import plotly.express as px
 # from datetime import datetime
 # from utils.pd_utils import select_cols
-from views.main_view import main_view
-from views.user_sidebar import user_sidebar
+from views.moved_view import moved_view
+# Old app entry point (kept for reference; the app has moved to eurogurufantasy.com):
+# from views.main_view import main_view
+# from views.user_sidebar import user_sidebar
 
 # # Import utils
 # from utils.data_processing import (
@@ -107,9 +109,11 @@ st.set_page_config(
 #         with st.expander("Auth debug"):
 #             st.json(st.experimental_user or {})
 
-# Call this once, before main content:
-user_sidebar()
-main_view()
+# The app has moved to eurogurufantasy.com; show the redirect page only.
+moved_view()
+# Old app (restore these and remove moved_view() to bring it back):
+# user_sidebar()
+# main_view()
 
 # if "show_advanced" not in st.session_state:
 #     st.session_state.show_advanced = False
